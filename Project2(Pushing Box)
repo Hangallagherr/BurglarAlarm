@@ -1,0 +1,75 @@
+#include <Wire.h>
+#include "rgb_lcd.h"
+#include <Bridge.h>
+#include <HttpClient.h>
+
+rgb_lcd lcd;
+
+const int soundSensorPin = A0;
+const int ledPin = 7;
+const int buzzerPin = 8;
+const char devid[] = "v5B1E05F980DB6F8"; // Replace with your PushingBox Device ID
+const char serverName[] = "api.pushingbox.com";
+
+int soundThreshold = 400;
+bool intruderDetected = false;
+unsigned long buzzerStartTime = 0;
+const unsigned long buzzerInterval = 200;
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(ledPin, OUTPUT);
+  pinMode(buzzerPin, OUTPUT);
+  lcd.begin(16, 2);
+  lcd.setRGB(0, 0, 255);
+  lcd.setCursor(0, 0);
+  lcd.print("No Intruder");
+  Bridge.begin();
+}
+
+void loop() {
+  int soundValue = analogRead(soundSensorPin);
+
+  if (soundValue > soundThreshold) {
+    // Sound detected, trigger LED, buzzer, and display message
+    if (!intruderDetected) {
+      intruderDetected = true;
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Intruder");
+      lcd.setRGB(255, 0, 0);
+      digitalWrite(ledPin, HIGH);
+      buzzerStartTime = millis();
+
+      // Initialize the client library
+      HttpClient client;
+
+      // Make a HTTP request to PushingBox
+      String APIRequest = String(serverName) + "/pushingbox?devid=" + String(devid) + "&IntruderDetected=1";
+      Serial.println(APIRequest);
+      client.get(APIRequest);
+
+      // Add delay to avoid duplicate triggers (adjust as needed)
+      delay(5000);
+    }
+  } else {
+    // No sound, turn off LED, buzzer, and reset the LCD display
+    if (intruderDetected) {
+      intruderDetected = false;
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("No Intruder");
+      lcd.setRGB(0, 0, 255);
+      digitalWrite(ledPin, LOW);
+      if (millis() - buzzerStartTime >= buzzerInterval) {
+        noTone(buzzerPin);
+      }
+    }
+  }
+
+  if (intruderDetected && millis() - buzzerStartTime >= buzzerInterval) {
+    tone(buzzerPin, 1000);
+  }
+
+  delay(100);
+}
